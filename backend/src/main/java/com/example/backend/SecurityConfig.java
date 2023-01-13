@@ -16,7 +16,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
 import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
@@ -32,8 +31,9 @@ public class SecurityConfig {
 		// https://docs.spring.io/spring-security/reference/5.8/migration/servlet/exploits.html#_i_am_using_angularjs_or_another_javascript_framework
 		CookieCsrfTokenRepository tokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
 		XorCsrfTokenRequestAttributeHandler delegate = new XorCsrfTokenRequestAttributeHandler();
-		// set the name of the attribute the CsrfToken will be populated on
-		delegate.setCsrfRequestAttributeName("_csrf");
+		// set the attribute to null to not use deferred csrf tokens, we want them to be added to every request
+		// https://docs.spring.io/spring-security/reference/5.8.0/migration/servlet/exploits.html#_defer_loading_csrftoken
+		delegate.setCsrfRequestAttributeName(null);
 		// Use only the handle() method of XorCsrfTokenRequestAttributeHandler and the
 		// default implementation of resolveCsrfTokenValue() from CsrfTokenRequestHandler
 		CsrfTokenRequestHandler requestHandler = delegate::handle;
@@ -46,7 +46,7 @@ public class SecurityConfig {
 						.successHandler((request, response, authentication) -> response.setStatus(200)) // Just return 200 instead of redirecting to '/'
 				) // We will use form login to authenticate users from the Angular frontend, it's okay to use a Controller though
 				.logout((logout) -> logout
-						.logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.OK)) // Just return 200 instead of redirecting to '/login'
+						.logoutSuccessHandler(new CsrfTokenAwareLogoutSuccessHandler(tokenRepository)) // Handler that generates and save a new CSRF token on logout
 				)
 				.cors(Customizer.withDefaults())
 				.exceptionHandling((exceptions) -> exceptions
@@ -55,8 +55,7 @@ public class SecurityConfig {
 				.csrf((csrf) -> csrf
 						.csrfTokenRepository(tokenRepository)
 						.csrfTokenRequestHandler(requestHandler)
-				)
-				.addFilterBefore(new EagerCsrfTokenFilter(), CsrfFilter.class);
+				);
 
 		return http.build();
 	}
